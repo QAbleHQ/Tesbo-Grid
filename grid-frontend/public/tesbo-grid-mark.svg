@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TesboGrid">
+  <title>TesboGrid</title>
+
+  <!-- Rounded blue tile -->
+  <rect width="64" height="64" rx="14" fill="#2A6BFF"/>
+
+  <!-- Stylized stencil "G" centered in tile (italic ~10deg) -->
+  <g transform="translate(32 32) skewX(-10) translate(-22 -22)">
+    <!-- G outer arc + bowl + horizontal bar (single closed path) -->
+    <path
+      fill="#FFFFFF"
+      d="M22 4
+         C11 4 4 13 4 22
+         C4 31 11 40 22 40
+         C29 40 35 36 38 30
+         L38 22
+         L23 22
+         L23 28
+         L31 28
+         C29 31 26 33 22 33
+         C16 33 11 28 11 22
+         C11 16 16 11 22 11
+         C25 11 28 12 30 14
+         L36 9
+         C32 6 27 4 22 4 Z"
+    />
+
+    <!-- Stencil cuts (match tile blue so they read as cuts in the white G) -->
+    <g fill="#2A6BFF">
+      <rect x="0"  y="17.5" width="44" height="2.4"/>
+      <rect x="0"  y="26.5" width="44" height="2.4"/>
+    </g>
+  </g>
+</svg>

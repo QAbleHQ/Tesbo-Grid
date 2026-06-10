@@ -1,0 +1,49 @@
+{{- $fn := include "tesbo.fullname" . -}}
+{{- if ne .Values.ingress.provider "none" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if eq .Values.ingress.provider "generic-ingress" }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.domains.frontend }}
+        - {{ .Values.domains.backend }}
+        - {{ .Values.domains.runner }}
+        - {{ .Values.domains.seleniumGrid }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.domains.frontend }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fn }}-frontend, port: { number: 3100 } } }
+    - host: {{ .Values.domains.backend }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fn }}-backend, port: { number: 7100 } } }
+    - host: {{ .Values.domains.runner }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fn }}-execution-api, port: { number: 7420 } } }
+    - host: {{ .Values.domains.seleniumGrid }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fn }}-selenium-proxy, port: { number: 7430 } } }
+{{- end }}

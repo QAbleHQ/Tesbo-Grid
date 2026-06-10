@@ -1,0 +1,15 @@
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+**/.env
+**/.env.local
+**/.env.*.local
+**/.git
+**/.gitignore
+**/.DS_Store
+**/npm-debug.log*
+**/coverage
+**/.vscode
+**/.idea

@@ -1,0 +1,26 @@
+# Overlay that runs Tesbo-Grid from prebuilt public images instead of building
+# from source. Use with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+#
+# Registry + tag come from .env (TESBO_REGISTRY, TESBO_IMAGE_TAG).
+services:
+  backend:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-app-api:${TESBO_IMAGE_TAG:-latest}
+  execution-api:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-api:${TESBO_IMAGE_TAG:-latest}
+  frontend:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-frontend:${TESBO_IMAGE_TAG:-latest}
+  selenium-proxy:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-selenium-proxy:${TESBO_IMAGE_TAG:-latest}
+  execution-worker-playwright-js:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-worker:${TESBO_IMAGE_TAG:-latest}
+  execution-worker-playwright-python:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-worker-python:${TESBO_IMAGE_TAG:-latest}
+  execution-worker-playwright-java:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-worker-java:${TESBO_IMAGE_TAG:-latest}
+  execution-worker-selenium-java:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-worker-selenium-java:${TESBO_IMAGE_TAG:-latest}
+  execution-worker-selenium-python:
+    image: ${TESBO_REGISTRY:-ghcr.io/qablehq/tesbo-grid}/tesbox-executions-worker-selenium-python:${TESBO_IMAGE_TAG:-latest}

@@ -1,0 +1,22 @@
+{
+  "name": "tesbox-grid-runner-api",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --import ./instrumentation.mjs src/index.js",
+    "start": "node --import ./instrumentation.mjs src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "dependencies": {
+    "@middleware.io/node-apm": "^2.4.2",
+    "@tesbox/playwright-runner": "file:../grid-shared",
+    "bullmq": "^5.58.5",
+    "express": "^4.21.2",
+    "ioredis": "^5.8.1",
+    "pg": "^8.13.1",
+    "prom-client": "^15.1.3"
+  }
+}

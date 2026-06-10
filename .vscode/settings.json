@@ -1,0 +1,7 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "sonarlint.connectedMode.project": {
+        "connectionId": "http-168-144-121-9-9000-",
+        "projectKey": "Tesbo-Grid"
+    }
+}

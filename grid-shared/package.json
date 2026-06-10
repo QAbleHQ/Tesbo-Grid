@@ -1,0 +1,16 @@
+{
+  "name": "@tesbox/playwright-runner",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "playwrightScriptRunner.js",
+  "exports": {
+    ".": "./playwrightScriptRunner.js",
+    "./apiKeyAuth": "./src/apiKeyAuth.js",
+    "./testReportParsers": "./src/testReportParsers.js"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  }
+}

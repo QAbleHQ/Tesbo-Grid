@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/playwright:v1.59.0-jammy
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN python3 -m pip install --no-cache-dir playwright==1.58.0
+
+COPY package.json package-lock.json* ./
+COPY grid-runner-workers/package.json grid-runner-workers/
+COPY grid-shared/package.json grid-shared/
+COPY grid-shared/playwrightScriptRunner.js grid-shared/
+COPY grid-shared/src/ grid-shared/src/
+
+RUN npm ci --omit=dev --workspace=grid-runner-workers
+
+COPY grid-runner-workers/src/ grid-runner-workers/src/
+COPY grid-runner-workers/instrumentation.mjs grid-runner-workers/
+
+EXPOSE 7411
+CMD ["node", "--import", "./grid-runner-workers/instrumentation.mjs", "grid-runner-workers/src/index.js"]

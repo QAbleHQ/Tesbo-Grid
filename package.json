@@ -1,0 +1,46 @@
+{
+  "name": "tesbox-executions",
+  "version": "1.0.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Tesbo-Grid — self-hostable distributed test-execution platform (Playwright + Selenium).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QAbleHQ/Tesbo-Grid.git"
+  },
+  "homepage": "https://github.com/QAbleHQ/Tesbo-Grid",
+  "workspaces": [
+    "grid-shared",
+    "grid-runner-api",
+    "grid-runner-workers",
+    "grid-selenium-proxy",
+    "grid-backend",
+    "grid-frontend",
+    "deploy/installer"
+  ],
+  "scripts": {
+    "setup": "node deploy/installer/bin/tesbo-grid.js init",
+    "up": "node deploy/installer/bin/tesbo-grid.js up",
+    "down": "node deploy/installer/bin/tesbo-grid.js down",
+    "doctor": "node deploy/installer/bin/tesbo-grid.js doctor",
+    "dev:local": "./scripts/dev-local.sh",
+    "dev:runner-api": "npm run dev --workspace=grid-runner-api",
+    "dev:runner-worker": "npm run dev --workspace=grid-runner-workers",
+    "dev:selenium-proxy": "npm run dev --workspace=grid-selenium-proxy",
+    "dev:backend": "npm run dev --workspace=grid-backend",
+    "dev:frontend": "npm run dev --workspace=grid-frontend",
+    "migrate:runner": "npm run migrate --workspace=grid-runner-api",
+    "migrate:backend": "npm run migrate --workspace=grid-backend",
+    "start:runner-api": "npm run start --workspace=grid-runner-api",
+    "start:runner-worker": "npm run start --workspace=grid-runner-workers",
+    "start:selenium-proxy": "npm run start --workspace=grid-selenium-proxy",
+    "start:backend": "npm run start --workspace=grid-backend",
+    "start:frontend": "npm run start --workspace=grid-frontend",
+    "build:frontend": "npm run build --workspace=grid-frontend",
+    "clear-queue": "node scripts/clear-queue.mjs",
+    "test": "npm test --workspaces --if-present"
+  },
+  "dependencies": {
+    "headroom-ai": "^0.1.0"
+  }
+}

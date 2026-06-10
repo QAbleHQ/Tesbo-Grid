@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    env:
+      # config.js calls requireEnv(DATABASE_URL) at import time; tests don't hit
+      # the DB but the module must load.
+      DATABASE_URL: postgres://test:test@localhost:5432/test
+      EXECUTION_API_BASE_URL: http://localhost:7420
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run workspace tests
+        run: npm test --workspaces --if-present
+
+  helm:
+    name: Helm lint & template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+      - name: helm lint
+        run: helm lint deploy/helm/tesbo-grid --set secrets.internalToken=ci-test
+      - name: helm template (renders without error)
+        run: |
+          helm template tg deploy/helm/tesbo-grid \
+            --set secrets.internalToken=ci-test \
+            --set database.bundled.enabled=true \
+            --set redis.bundled.enabled=true > /dev/null
+
+  compose:
+    name: Compose config validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: |
+          docker compose --env-file .env.example config > /dev/null
+          docker compose --env-file .env.example \
+            -f docker-compose.yml -f docker-compose.images.yml config > /dev/null
+
+  installer:
+    name: Installer CLI smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: tesbo-grid init (non-interactive) writes .env
+        run: |
+          node deploy/installer/bin/tesbo-grid.js init --non-interactive
+          test -f .env && echo "ok: .env generated"
+          grep -q '^TESBO_INTERNAL_TOKEN=.\+' .env && echo "ok: secret generated"

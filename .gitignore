@@ -1,0 +1,36 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Operator runtime env files (only *.example variants are tracked)
+app.env
+app.env.*
+!app.env.example
+
+# Secrets / keys — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local Claude Code / agent config (may contain API keys)
+.claude/settings.json
+.claude/settings.local.json
+
+artifacts/
+*.log
+dist/
+
+# Next.js build output
+grid-frontend/.next/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# OS files
+.DS_Store
+Thumbs.db

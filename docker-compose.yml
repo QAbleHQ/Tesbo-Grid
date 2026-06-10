@@ -1,0 +1,334 @@
+# Tesbo-Grid — full single-VM stack.
+#
+#   cp .env.example .env      # then edit secrets/URLs (or run `tesbo-grid init`)
+#   docker compose up -d      # build from source + start everything
+#   docker compose down       # stop
+#
+# To run from prebuilt public images instead of building from source:
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+#
+# Services:
+#   postgres            PostgreSQL 16 — two DBs: tesbo_grid (backend) + tesbo_execution (runner)
+#   redis               BullMQ queue backend
+#   backend             Platform API: auth, projects, reports (7100)
+#   execution-api       Execution orchestration API (7420)
+#   frontend            Next.js dashboard (3100)
+#   selenium-proxy      Auth proxy in front of Selenium Grid (7430)
+#   selenium-hub        Selenium Grid hub (4444) + chrome/firefox nodes
+#   execution-worker-*  One pool per language/framework (one BullMQ queue each)
+#
+# Each worker pool runs a different image (only the runtimes it needs) and
+# subscribes to exactly ONE BullMQ queue, so scaling is independent per stack.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: tesbo_grid
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Platform backend (auth, projects, reports) ──────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: grid-backend/Dockerfile
+    command: ["sh", "-c", "node grid-backend/src/db/migrate.js && node --import ./grid-backend/instrumentation.mjs grid-backend/src/index.js"]
+    environment:
+      PORT: 7100
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/tesbo_grid
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3100}
+      CORS_ALLOWED_ORIGINS: ${FRONTEND_URL:-http://localhost:3100}
+      PUBLIC_BACKEND_URL: ${BACKEND_PUBLIC_URL:-http://localhost:7100}
+      EXECUTION_API_URL: http://execution-api:7420
+      EXECUTION_API_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+      INTERNAL_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+      SELENIUM_PROXY_URL: http://selenium-proxy:7430
+      RUNNER_PUBLIC_API_URL: ${RUNNER_PUBLIC_API_URL:-http://localhost:7420}
+      SESSION_SECURE: "false"
+      SESSION_SAME_SITE: lax
+      ARTIFACT_STORAGE_PROVIDER: ${ARTIFACT_STORAGE_PROVIDER:-none}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      MW_APM_SERVICE_NAME: tesbo-backend
+      MW_APM_ACCESS_TOKEN: ${MW_APM_ACCESS_TOKEN:-}
+      MW_AGENT_SERVICE: ${MW_AGENT_SERVICE:-172.17.0.1}
+    ports:
+      - "7100:7100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:7100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Execution orchestration API ─────────────────────────────────────────────
+  execution-api:
+    build:
+      context: .
+      dockerfile: grid-runner-api/Dockerfile
+    command: ["sh", "-c", "node grid-runner-api/src/db/migrate.js && node --import ./grid-runner-api/instrumentation.mjs grid-runner-api/src/index.js"]
+    environment:
+      PORT: 7420
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/tesbo_execution
+      REDIS_URL: redis://redis:6379
+      QUEUE_PREFIX: bull
+      QUEUE_NAME: execution-jobs
+      TESBO_API_URL: http://backend:7100
+      TESBO_UI_URL: ${FRONTEND_URL:-http://localhost:3100}
+      EXECUTION_API_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+      INTERNAL_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+      SCHEDULER_GLOBAL_CONCURRENT_TESTCASES: 0
+      AUTOSCALE_MAX_WORKERS: 500
+      AUTOSCALE_TARGET_TESTCASES_PER_WORKER: 1
+      DISPATCH_BATCH_SIZE: 50
+      STALE_JOB_MINUTES: 5
+      MW_APM_SERVICE_NAME: tesbo-execution-api
+      MW_APM_ACCESS_TOKEN: ${MW_APM_ACCESS_TOKEN:-}
+      MW_AGENT_SERVICE: ${MW_AGENT_SERVICE:-172.17.0.1}
+    ports:
+      - "7420:7420"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:7420/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Dashboard ────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: grid-frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${BACKEND_PUBLIC_URL:-http://localhost:7100}
+        NEXT_PUBLIC_SELENIUM_GRID_DOMAIN: ${SELENIUM_GRID_DOMAIN:-localhost:4444}
+    environment:
+      PORT: 3100
+    ports:
+      - "3100:3100"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Selenium Grid + auth proxy ───────────────────────────────────────────────
+  selenium-proxy:
+    build:
+      context: .
+      dockerfile: grid-selenium-proxy/Dockerfile
+    environment:
+      PORT: 7430
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/tesbo_execution
+      SELENIUM_HUB_URL: http://selenium-hub:4444/wd/hub
+      TESBO_API_URL: http://backend:7100
+      INTERNAL_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+    ports:
+      - "7430:7430"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      selenium-hub:
+        condition: service_healthy
+
+  selenium-hub:
+    image: selenium/hub:4.31.0
+    ports:
+      - "4444:4444"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4444/wd/hub/status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  selenium-node-chrome:
+    image: selenium/node-chromium:4.31.0
+    shm_size: 2gb
+    depends_on:
+      selenium-hub:
+        condition: service_healthy
+    environment:
+      SE_EVENT_BUS_HOST: selenium-hub
+      SE_EVENT_BUS_PUBLISH_PORT: 4442
+      SE_EVENT_BUS_SUBSCRIBE_PORT: 4443
+      SE_NODE_MAX_SESSIONS: ${SELENIUM_NODE_MAX_SESSIONS:-4}
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      # Live VNC for the dashboard's session viewer. The selenium-proxy gates
+      # access by project membership before piping bytes through, so the noVNC
+      # password is intentionally disabled (auth happens at the proxy layer).
+      SE_START_VNC: "true"
+      SE_VNC_NO_PASSWORD: "1"
+      SE_NO_VNC_PORT: 7900
+
+  selenium-node-firefox:
+    image: selenium/node-firefox:4.31.0
+    shm_size: 2gb
+    depends_on:
+      selenium-hub:
+        condition: service_healthy
+    environment:
+      SE_EVENT_BUS_HOST: selenium-hub
+      SE_EVENT_BUS_PUBLISH_PORT: 4442
+      SE_EVENT_BUS_SUBSCRIBE_PORT: 4443
+      SE_NODE_MAX_SESSIONS: ${SELENIUM_NODE_MAX_SESSIONS:-4}
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      SE_START_VNC: "true"
+      SE_VNC_NO_PASSWORD: "1"
+      SE_NO_VNC_PORT: 7900
+
+  # ── Worker pools ──────────────────────────────────────────────────────────────
+  execution-worker-playwright-js:
+    build:
+      context: .
+      dockerfile: grid-runner-workers/Dockerfile
+    environment: &worker-env
+      PORT: 7411
+      EXECUTION_API_BASE_URL: http://execution-api:7420
+      EXECUTION_API_SHARED_TOKEN: ${TESBO_INTERNAL_TOKEN:-change-me-please}
+      REDIS_URL: redis://redis:6379
+      QUEUE_PREFIX: bull
+      PLAYWRIGHT_HEADLESS: "true"
+      ARTIFACT_STORAGE_PROVIDER: ${ARTIFACT_STORAGE_PROVIDER:-none}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      MW_APM_ACCESS_TOKEN: ${MW_APM_ACCESS_TOKEN:-}
+      MW_AGENT_SERVICE: ${MW_AGENT_SERVICE:-172.17.0.1}
+      QUEUE_NAME: execution-jobs
+      QUEUE_NAMES: execution-jobs
+      QUEUE_CONCURRENCY: ${PLAYWRIGHT_JS_CONCURRENCY:-20}
+      SUPPORTED_FRAMEWORKS: playwright
+      SUPPORTED_LANGUAGES: javascript,typescript
+      MW_APM_SERVICE_NAME: tesbo-worker-playwright-js
+    depends_on:
+      redis:
+        condition: service_healthy
+      execution-api:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+
+  execution-worker-playwright-python:
+    build:
+      context: .
+      dockerfile: grid-runner-workers/Dockerfile.python
+    environment:
+      <<: *worker-env
+      QUEUE_NAME: execution-jobs-python
+      QUEUE_NAMES: execution-jobs-python
+      QUEUE_CONCURRENCY: ${PLAYWRIGHT_OTHER_CONCURRENCY:-5}
+      SUPPORTED_FRAMEWORKS: playwright
+      SUPPORTED_LANGUAGES: python
+      MW_APM_SERVICE_NAME: tesbo-worker-playwright-python
+    depends_on:
+      redis:
+        condition: service_healthy
+      execution-api:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+
+  execution-worker-playwright-java:
+    build:
+      context: .
+      dockerfile: grid-runner-workers/Dockerfile.java
+    environment:
+      <<: *worker-env
+      QUEUE_NAME: execution-jobs-java
+      QUEUE_NAMES: execution-jobs-java
+      QUEUE_CONCURRENCY: ${PLAYWRIGHT_OTHER_CONCURRENCY:-5}
+      SUPPORTED_FRAMEWORKS: playwright
+      SUPPORTED_LANGUAGES: java
+      MW_APM_SERVICE_NAME: tesbo-worker-playwright-java
+    depends_on:
+      redis:
+        condition: service_healthy
+      execution-api:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+
+  execution-worker-selenium-java:
+    build:
+      context: .
+      dockerfile: grid-runner-workers/Dockerfile.selenium-java
+    environment:
+      <<: *worker-env
+      QUEUE_NAME: execution-jobs-selenium-java
+      QUEUE_NAMES: execution-jobs-selenium-java
+      QUEUE_CONCURRENCY: ${PLAYWRIGHT_OTHER_CONCURRENCY:-5}
+      SUPPORTED_FRAMEWORKS: selenium
+      SUPPORTED_LANGUAGES: java
+      SELENIUM_REMOTE_URL: http://selenium-hub:4444/wd/hub
+      SELENIUM_DEFAULT_BROWSER: chrome
+      MW_APM_SERVICE_NAME: tesbo-worker-selenium-java
+    depends_on:
+      redis:
+        condition: service_healthy
+      execution-api:
+        condition: service_healthy
+      selenium-hub:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+
+  execution-worker-selenium-python:
+    build:
+      context: .
+      dockerfile: grid-runner-workers/Dockerfile.selenium-python
+    environment:
+      <<: *worker-env
+      QUEUE_NAME: execution-jobs-selenium-python
+      QUEUE_NAMES: execution-jobs-selenium-python
+      QUEUE_CONCURRENCY: ${PLAYWRIGHT_OTHER_CONCURRENCY:-5}
+      SUPPORTED_FRAMEWORKS: selenium
+      SUPPORTED_LANGUAGES: python
+      SELENIUM_REMOTE_URL: http://selenium-hub:4444/wd/hub
+      SELENIUM_DEFAULT_BROWSER: chrome
+      MW_APM_SERVICE_NAME: tesbo-worker-selenium-python
+    depends_on:
+      redis:
+        condition: service_healthy
+      execution-api:
+        condition: service_healthy
+      selenium-hub:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+
+volumes:
+  pgdata:

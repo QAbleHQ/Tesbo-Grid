@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tesbo-grid
+description: Self-hosted distributed test-execution platform (Playwright + Selenium)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/QAbleHQ/Tesbo-Grid
+sources:
+  - https://github.com/QAbleHQ/Tesbo-Grid
+keywords:
+  - testing
+  - playwright
+  - selenium
+  - test-grid
+maintainers:
+  - name: Tesbo-Grid contributors

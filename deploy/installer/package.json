@@ -1,0 +1,25 @@
+{
+  "name": "@tesbox/grid-installer",
+  "version": "1.0.0",
+  "description": "Operator CLI to configure and deploy a self-hosted Tesbo-Grid (Docker Compose or Kubernetes/Helm).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "tesbo-grid": "bin/tesbo-grid.js"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "tesbo",
+    "selenium",
+    "playwright",
+    "self-hosted",
+    "installer",
+    "devops"
+  ]
+}

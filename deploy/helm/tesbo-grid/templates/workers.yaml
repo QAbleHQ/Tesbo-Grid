@@ -1,0 +1,76 @@
+{{- $fn := include "tesbo.fullname" . -}}
+{{- $root := . -}}
+{{- range $w := .Values.workers }}
+{{- $isSelenium := eq $w.framework "selenium" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-worker-{{ $w.name }}
+  labels:
+    {{- include "tesbo.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $w.name }}
+spec:
+  # With KEDA enabled the ScaledObject owns replicas (starts at 0). Without it,
+  # run at least 1 so the pool can pick up jobs.
+  replicas: {{ if $root.Values.autoscaling.enabled }}0{{ else }}{{ max $w.minReplicas 1 }}{{ end }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: worker-{{ $w.name }}, app.kubernetes.io/instance: {{ $root.Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: worker-{{ $w.name }}, app.kubernetes.io/instance: {{ $root.Release.Name }} }
+      annotations:
+        # Don't evict a worker mid-job during cluster scale-down.
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    spec:
+      {{- include "tesbo.imagePullSecrets" $root | nindent 6 }}
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: worker
+          image: {{ include "tesbo.image" (dict "root" $root "name" $w.image) }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports: [{ containerPort: 7411 }]
+          env:
+            - { name: PORT, value: "7411" }
+            - { name: EXECUTION_API_BASE_URL, value: "http://{{ $fn }}-execution-api:7420" }
+            - name: EXECUTION_API_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: EXECUTION_API_SHARED_TOKEN } }
+            - { name: QUEUE_PREFIX, value: "bull" }
+            - { name: QUEUE_NAME, value: "{{ $w.queue }}" }
+            - { name: QUEUE_NAMES, value: "{{ $w.queue }}" }
+            - { name: QUEUE_CONCURRENCY, value: "{{ $w.concurrency }}" }
+            - { name: SUPPORTED_FRAMEWORKS, value: "{{ $w.framework }}" }
+            - { name: SUPPORTED_LANGUAGES, value: "{{ $w.languages }}" }
+            - { name: PLAYWRIGHT_HEADLESS, value: "true" }
+            {{- if $isSelenium }}
+            - { name: SELENIUM_REMOTE_URL, value: "http://{{ $fn }}-selenium-hub:4444/wd/hub" }
+            - { name: SELENIUM_DEFAULT_BROWSER, value: "chrome" }
+            {{- end }}
+          envFrom:
+            - secretRef: { name: {{ $fn }}-env }
+{{- if $root.Values.autoscaling.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $fn }}-worker-{{ $w.name }}
+  labels: {{- include "tesbo.labels" $root | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $fn }}-worker-{{ $w.name }}
+  idleReplicaCount: 0
+  minReplicaCount: {{ $w.minReplicas }}
+  maxReplicaCount: {{ $w.maxReplicas }}
+  pollingInterval: 5
+  cooldownPeriod: 660
+  triggers:
+    - type: redis
+      metadata:
+        addressFromEnv: REDIS_ADDRESS
+        passwordFromEnv: REDIS_PASSWORD
+        listName: "bull:{{ $w.queue }}:wait"
+        listLength: "1"
+        activationListLength: "0"
+        enableTLS: "{{ $root.Values.redis.kedaEnableTLS }}"
+{{- end }}
+{{- end }}

@@ -1,0 +1,27 @@
+{
+  "name": "@tesbox/cli",
+  "version": "2.11.0",
+  "description": "CLI to run Playwright, Selenium, and pytest tests on TesboGrid — managed mode + local-run-and-upload",
+  "type": "module",
+  "bin": {
+    "tesbox": "bin/tesbox.js"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "dependencies": {
+    "glob": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "playwright",
+    "testing",
+    "tesbox",
+    "ci",
+    "test-runner"
+  ],
+  "license": "Apache-2.0"
+}

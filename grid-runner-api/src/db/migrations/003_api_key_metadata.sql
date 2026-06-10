@@ -1,0 +1,3 @@
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS metadata_json JSONB DEFAULT '{}'::jsonb;
+

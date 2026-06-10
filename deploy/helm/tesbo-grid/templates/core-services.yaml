@@ -1,0 +1,190 @@
+{{- $fn := include "tesbo.fullname" . -}}
+{{- $token := .Values.secrets.internalToken -}}
+# ── Backend (platform API) ────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-backend
+  labels:
+    {{- include "tesbo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: backend, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: backend, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      {{- include "tesbo.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: backend
+          image: {{ include "tesbo.image" (dict "root" . "name" "tesbox-executions-app-api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "node grid-backend/src/db/migrate.js && node --import ./grid-backend/instrumentation.mjs grid-backend/src/index.js"]
+          ports: [{ containerPort: 7100 }]
+          env:
+            - name: PORT
+              value: "7100"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: BACKEND_DATABASE_URL } }
+            - name: EXECUTION_API_URL
+              value: "http://{{ $fn }}-execution-api:7420"
+            - name: SELENIUM_PROXY_URL
+              value: "http://{{ $fn }}-selenium-proxy:7430"
+            - name: FRONTEND_URL
+              value: "https://{{ .Values.domains.frontend }}"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "https://{{ .Values.domains.frontend }}"
+            - name: PUBLIC_BACKEND_URL
+              value: "https://{{ .Values.domains.backend }}"
+            - name: RUNNER_PUBLIC_API_URL
+              value: "https://{{ .Values.domains.runner }}"
+            - name: EXECUTION_API_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: EXECUTION_API_SHARED_TOKEN } }
+            - name: INTERNAL_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: INTERNAL_SHARED_TOKEN } }
+          envFrom:
+            - secretRef: { name: {{ $fn }}-env }
+          resources: {{- toYaml .Values.backend.resources | nindent 12 }}
+          readinessProbe: { httpGet: { path: /health, port: 7100 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-backend
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: backend, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ port: 7100, targetPort: 7100 }]
+---
+# ── Execution API ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-execution-api
+  labels:
+    {{- include "tesbo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: execution-api
+spec:
+  replicas: {{ .Values.executionApi.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: execution-api, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: execution-api, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      {{- include "tesbo.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: execution-api
+          image: {{ include "tesbo.image" (dict "root" . "name" "tesbox-executions-api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "node grid-runner-api/src/db/migrate.js && node --import ./grid-runner-api/instrumentation.mjs grid-runner-api/src/index.js"]
+          ports: [{ containerPort: 7420 }]
+          env:
+            - name: PORT
+              value: "7420"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: EXECUTION_DATABASE_URL } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: REDIS_URL } }
+            - name: TESBO_API_URL
+              value: "http://{{ $fn }}-backend:7100"
+            - name: TESBO_UI_URL
+              value: "https://{{ .Values.domains.frontend }}"
+            - name: EXECUTION_API_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: EXECUTION_API_SHARED_TOKEN } }
+            - name: INTERNAL_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: INTERNAL_SHARED_TOKEN } }
+          resources: {{- toYaml .Values.executionApi.resources | nindent 12 }}
+          readinessProbe: { httpGet: { path: /health, port: 7420 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-execution-api
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: execution-api, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ port: 7420, targetPort: 7420 }]
+---
+# ── Frontend ──────────────────────────────────────────────────────────────────
+# NOTE: NEXT_PUBLIC_API_URL is baked at image build time. For Kubernetes, build
+# the frontend image with --build-arg NEXT_PUBLIC_API_URL=https://<backend host>
+# (see docs/deploy-*.md), or the dashboard will call the wrong API origin.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-frontend
+  labels:
+    {{- include "tesbo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: frontend, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: frontend, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      {{- include "tesbo.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: frontend
+          image: {{ include "tesbo.image" (dict "root" . "name" "tesbox-executions-frontend") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ containerPort: 3100 }]
+          env: [{ name: PORT, value: "3100" }]
+          resources: {{- toYaml .Values.frontend.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-frontend
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: frontend, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ port: 3100, targetPort: 3100 }]
+---
+# ── Selenium auth proxy ───────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-selenium-proxy
+  labels:
+    {{- include "tesbo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: selenium-proxy
+spec:
+  replicas: {{ .Values.seleniumProxy.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: selenium-proxy, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: selenium-proxy, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      {{- include "tesbo.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: selenium-proxy
+          image: {{ include "tesbo.image" (dict "root" . "name" "tesbox-executions-selenium-proxy") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ containerPort: 7430 }]
+          env:
+            - name: PORT
+              value: "7430"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: EXECUTION_DATABASE_URL } }
+            - name: SELENIUM_HUB_URL
+              value: "http://{{ $fn }}-selenium-hub:4444/wd/hub"
+            - name: TESBO_API_URL
+              value: "http://{{ $fn }}-backend:7100"
+            - name: INTERNAL_SHARED_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $fn }}-env, key: INTERNAL_SHARED_TOKEN } }
+          resources: {{- toYaml .Values.seleniumProxy.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-selenium-proxy
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: selenium-proxy, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ port: 7430, targetPort: 7430 }]

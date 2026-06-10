@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 140" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Tesbo Grid">
+  <title>Tesbo Grid</title>
+  <defs>
+    <style><![CDATA[
+      .tg-tesbo,
+      .tg-grid {
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+      }
+    ]]></style>
+  </defs>
+
+  <g transform="translate(20 102) skewX(-9)">
+    <!-- "Tesbo" wordmark -->
+    <text class="tg-tesbo" font-size="96" font-weight="500" fill="#FFFFFF" letter-spacing="-2">Tesbo</text>
+
+    <!-- "GRID" wordmark with stencil cuts -->
+    <g transform="translate(252 0)">
+      <text class="tg-grid" font-size="96" font-weight="900" fill="#5B8DFF" letter-spacing="2">GRID</text>
+      <!-- Stencil bars (matching dark canvas color) -->
+      <g fill="#05070C">
+        <rect x="-4" y="-66" width="298" height="6"/>
+        <rect x="-4" y="-34" width="298" height="6"/>
+      </g>
+    </g>
+  </g>
+</svg>

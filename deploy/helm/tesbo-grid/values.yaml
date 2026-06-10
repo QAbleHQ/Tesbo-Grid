@@ -1,0 +1,159 @@
+# Default values for the tesbo-grid chart.
+# Override with `helm install -f values.generated.yaml` (see `tesbo-grid init`).
+
+# ── Images ────────────────────────────────────────────────────────────────────
+image:
+  registry: ghcr.io/qablehq/tesbo-grid
+  tag: latest
+  pullPolicy: IfNotPresent
+# Name of a pre-created docker-registry pull secret (leave "" for public images).
+imagePullSecret: ""
+
+# ── Public hostnames ──────────────────────────────────────────────────────────
+domains:
+  frontend: grid.example.com
+  backend: api.example.com
+  runner: run.example.com
+  seleniumGrid: selenium.example.com
+
+# ── Ingress / load balancer ─────────────────────────────────────────────────
+# provider: generic-ingress | aws | gcp | azure | none
+# "generic-ingress" creates an Ingress object using ingress.className.
+# The cloud providers create LoadBalancer Services with provider annotations.
+ingress:
+  provider: generic-ingress
+  className: nginx
+  tls:
+    enabled: true
+    # Secret holding the TLS cert for the hostnames above (generic-ingress).
+    secretName: tesbo-grid-tls
+  annotations: {}
+
+# ── Datastores (use managed services in production) ──────────────────────────
+# If url is set, the chart uses it. Otherwise set bundled.enabled to run an
+# in-cluster Postgres/Redis (fine for trials, NOT recommended for production).
+database:
+  url: ""              # postgres://user:pass@host:5432/tesbo_grid
+  executionUrl: ""     # postgres://user:pass@host:5432/tesbo_execution (defaults to url's host, db tesbo_execution)
+  bundled:
+    enabled: false
+    storage: 10Gi
+redis:
+  url: ""              # redis://[:password@]host:6379  (rediss:// for TLS)
+  bundled:
+    enabled: false
+  # KEDA reads queue depth directly from Redis and needs host:port + password
+  # separately from the URL above. Required when autoscaling.enabled=true and
+  # you use an external Redis. For the bundled Redis these default sensibly.
+  kedaAddress: ""      # host:6379
+  kedaPassword: ""
+  kedaEnableTLS: "false"
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+secrets:
+  # Shared internal service-to-service token. Generate with `openssl rand -hex 32`.
+  internalToken: ""
+
+# ── Artifact storage (S3-compatible) ─────────────────────────────────────────
+storage:
+  provider: none       # none | s3
+  endpoint: ""         # blank for AWS S3
+  region: us-east-1
+  bucket: ""
+  accessKey: ""
+  secretKey: ""
+  publicBaseUrl: ""
+  forcePathStyle: false
+
+# ── Autoscaling (KEDA) ────────────────────────────────────────────────────────
+autoscaling:
+  enabled: true        # requires KEDA installed in the cluster
+
+# ── Core services ───────────────────────────────────────────────────────────
+backend:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+executionApi:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+frontend:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+seleniumProxy:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+# ── Selenium Grid (hub + browser nodes) ──────────────────────────────────────
+selenium:
+  image:
+    hub: selenium/hub:4.31.0
+    chrome: selenium/node-chromium:4.31.0
+    firefox: selenium/node-firefox:4.31.0
+  nodeMaxSessions: 4
+  chrome:
+    replicas: 2
+    maxReplicas: 8
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { memory: 2Gi }
+  firefox:
+    replicas: 1
+    maxReplicas: 4
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { memory: 2Gi }
+
+# ── Worker pools (one BullMQ queue each) ──────────────────────────────────────
+# Each entry becomes a Deployment (+ KEDA ScaledObject when autoscaling.enabled).
+workers:
+  - name: playwright-js
+    image: tesbox-executions-worker
+    queue: execution-jobs
+    framework: playwright
+    languages: javascript,typescript
+    concurrency: 4
+    minReplicas: 0
+    maxReplicas: 5
+  - name: playwright-python
+    image: tesbox-executions-worker-python
+    queue: execution-jobs-python
+    framework: playwright
+    languages: python
+    concurrency: 2
+    minReplicas: 0
+    maxReplicas: 5
+  - name: playwright-java
+    image: tesbox-executions-worker-java
+    queue: execution-jobs-java
+    framework: playwright
+    languages: java
+    concurrency: 2
+    minReplicas: 0
+    maxReplicas: 5
+  - name: selenium-java
+    image: tesbox-executions-worker-selenium-java
+    queue: execution-jobs-selenium-java
+    framework: selenium
+    languages: java
+    concurrency: 2
+    minReplicas: 0
+    maxReplicas: 5
+  - name: selenium-python
+    image: tesbox-executions-worker-selenium-python
+    queue: execution-jobs-selenium-python
+    framework: selenium
+    languages: python
+    concurrency: 2
+    minReplicas: 0
+    maxReplicas: 5

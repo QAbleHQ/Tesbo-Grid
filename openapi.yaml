@@ -1,0 +1,558 @@
+openapi: 3.1.0
+info:
+  title: TesboGrid API
+  version: 1.0.0
+  description: >
+    TesboGrid: Distributed test execution platform for Playwright, Python, and Java suites at scale.
+    Accepts scripts and configuration, returns results and artifacts.
+    Has zero knowledge of test cases, cycles, or suites -- those are upstream TesboX product concepts.
+
+servers:
+  - url: http://localhost:7420
+    description: Local development
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+  schemas:
+    JobInput:
+      type: object
+      properties:
+        script:
+          type: string
+          description: Playwright test script body (required for javascript/typescript script mode).
+        externalRef:
+          type: string
+          description: Opaque caller-defined reference for this job (e.g. executionId).
+        title:
+          type: string
+          description: Human-readable label for the job.
+        startUrl:
+          type: string
+          description: URL to navigate to before running the script.
+        maxRetries:
+          type: integer
+          default: 2
+        testCaseCount:
+          type: integer
+          default: 1
+          description: Estimated number of test cases represented by this job. Used for scheduler allocation and scaling heuristics.
+        runtime:
+          $ref: "#/components/schemas/RuntimeInput"
+
+    RuntimeInput:
+      type: object
+      properties:
+        language:
+          type: string
+          enum: [javascript, typescript, python, java]
+          default: javascript
+        executionMode:
+          type: string
+          enum: [script, project]
+          default: script
+        entrypoint:
+          type: string
+          description: Runtime-specific test selector or entry file.
+        command:
+          type: string
+          description: Optional runtime command override (primarily used by java project mode).
+        configFile:
+          type: string
+          description: Optional runtime config file path (for project mode).
+
+    RunInput:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobInput"
+          minItems: 1
+        externalRef:
+          type: string
+          description: Opaque caller-defined reference for this run (e.g. cycleId).
+        projectId:
+          type: string
+          description: Project scope for platform-managed scheduling and fairness.
+        executionProvider:
+          type: string
+          enum: [default, lambdatest, browserstack]
+          default: default
+        providerConfig:
+          type: object
+          description: Provider-specific configuration (credentials, capabilities).
+        webhookUrl:
+          type: string
+          format: uri
+          description: URL to POST webhook events to on state changes.
+        webhookSecret:
+          type: string
+          description: Shared secret for signing webhook payloads (HMAC-SHA256).
+        modelProvider:
+          type: string
+        modelApiKey:
+          type: string
+        model:
+          type: string
+
+    RunSummary:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        externalRef:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed, cancelled]
+        totalJobs:
+          type: integer
+        completedJobs:
+          type: integer
+        passedJobs:
+          type: integer
+        failedJobs:
+          type: integer
+        cancelledJobs:
+          type: integer
+        queuedJobs:
+          type: integer
+        totalTestCases:
+          type: integer
+        queuedTestCases:
+          type: integer
+        completedTestCases:
+          type: integer
+        passedTestCases:
+          type: integer
+        failedTestCases:
+          type: integer
+        cancelledTestCases:
+          type: integer
+        executionProvider:
+          type: string
+        maxParallel:
+          type: integer
+          description: Platform-managed burst ceiling for this run, used by the scheduler.
+        tenantConcurrencyLimit:
+          type: integer
+          nullable: true
+        tenantWeight:
+          type: integer
+          nullable: true
+        burstConcurrencyLimit:
+          type: integer
+          nullable: true
+        reservedConcurrency:
+          type: integer
+          nullable: true
+        schedulerReason:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        firstJobStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+
+    JobSummary:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        externalRef:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, passed, failed, cancelled, manual]
+        workerId:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        shardIndex:
+          type: integer
+        shardTotal:
+          type: integer
+        testCaseCount:
+          type: integer
+        runtime:
+          $ref: "#/components/schemas/RuntimeInput"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    JobReport:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        logs:
+          type: array
+          items:
+            type: object
+        videoPath:
+          type: string
+          nullable: true
+        screenshotPath:
+          type: string
+          nullable: true
+        tracePath:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+
+    QueueStats:
+      type: object
+      properties:
+        queuedJobs:
+          type: integer
+        runningJobs:
+          type: integer
+        queuedTestCases:
+          type: integer
+        runningTestCases:
+          type: integer
+        activeRuns:
+          type: integer
+        runningRuns:
+          type: integer
+        completedRuns:
+          type: integer
+        failedRuns:
+          type: integer
+        desiredWorkers:
+          type: integer
+        pendingDispatchJobs:
+          type: integer
+        pendingDispatchTestCases:
+          type: integer
+        scalerPressure:
+          type: integer
+        waitingRuns:
+          type: integer
+        oldestWaitingRunAgeSeconds:
+          type: integer
+
+    AutoscaleRecommendation:
+      type: object
+      properties:
+        desiredWorkers:
+          type: integer
+        minWorkers:
+          type: integer
+        maxWorkers:
+          type: integer
+        targetTestCasesPerWorker:
+          type: integer
+        queuedJobs:
+          type: integer
+        runningJobs:
+          type: integer
+        queuedTestCases:
+          type: integer
+        runningTestCases:
+          type: integer
+        pendingDispatchJobs:
+          type: integer
+        pendingDispatchTestCases:
+          type: integer
+        scalerPressure:
+          type: integer
+        scaleReason:
+          type: string
+
+    WebhookEvent:
+      type: object
+      properties:
+        event:
+          type: string
+          enum: [run.started, run.completed, run.failed, run.cancelled, job.started, job.completed, job.failed]
+        runId:
+          type: string
+          format: uuid
+        jobId:
+          type: string
+          format: uuid
+          nullable: true
+        externalRef:
+          type: string
+        externalJobRef:
+          type: string
+          nullable: true
+        status:
+          type: string
+        payload:
+          type: object
+          description: Event-specific data (logs, paths, error).
+        timestamp:
+          type: string
+          format: date-time
+
+paths:
+  /api/runs:
+    get:
+      summary: Lookup runs by external reference
+      operationId: listRunsByExternalRef
+      parameters:
+        - name: externalRef
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Opaque caller-defined reference (e.g. cycleId)
+      responses:
+        "200":
+          description: Matching runs (most recent first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RunSummary"
+        "400":
+          description: Missing externalRef parameter
+    post:
+      summary: Submit a new execution run
+      operationId: createRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunInput"
+      responses:
+        "202":
+          description: Run accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSummary"
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "409":
+          description: Duplicate run or project at capacity
+
+  /api/runs/{runId}:
+    get:
+      summary: Get run status and progress
+      operationId: getRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSummary"
+        "404":
+          description: Run not found
+
+  /api/runs/{runId}/jobs:
+    get:
+      summary: List jobs in a run
+      operationId: listRunJobs
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JobSummary"
+    post:
+      summary: Append jobs to an existing running run
+      operationId: appendRunJobs
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jobs]
+              properties:
+                jobs:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: "#/components/schemas/JobInput"
+      responses:
+        "202":
+          description: Jobs accepted and queued on the run
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RunSummary"
+                  - type: object
+                    properties:
+                      appendedJobs:
+                        type: integer
+        "400":
+          description: Validation error
+        "404":
+          description: Run not found
+        "409":
+          description: Run cannot accept new jobs or project at capacity
+
+  /api/runs/{runId}/cancel:
+    post:
+      summary: Cancel a running execution
+      operationId: cancelRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: Run not found
+
+  /api/runs/{runId}/jobs/{jobId}/report:
+    get:
+      summary: Get execution report for a job
+      operationId: getJobReport
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobReport"
+        "404":
+          description: Not found
+
+  /api/queue/stats:
+    get:
+      summary: Queue health and metrics
+      operationId: getQueueStats
+      responses:
+        "200":
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueStats"
+
+  /api/queue/autoscaling:
+    get:
+      summary: Autoscaling recommendation
+      operationId: getAutoscaling
+      responses:
+        "200":
+          description: Scaling recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoscaleRecommendation"
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      operationId: metrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus text exposition format
+
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string

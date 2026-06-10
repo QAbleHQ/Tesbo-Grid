@@ -1,0 +1,110 @@
+--- a/grid-backend/src/routes/reports.js
++++ b/grid-backend/src/routes/reports.js
+@@ -6,6 +6,8 @@ import {
+   summarizeTests,
+ } from "@tesbox/playwright-runner/testReportParsers";
+ import { query } from "../db/database.js";
++import { queryWithRetry, monitorQuery } from "../db/queryWithRetry.js";
++import { checkDatabaseHealth } from "../db/diagnostics.js";
+ import { requireAuth } from "../middleware/session.js";
+ import { config } from "../config.js";
+ import { logger } from "../logger.js";
+@@ -597,7 +599,7 @@ router.delete("/:projectId/reports/runs/:runId", requireAuth, async (req, res)
+ });
+ 
+ // ── List runs with pagination ────────────────────────────────────────────────
+-router.get("/:projectId/tesbo-reports/runs", requireAuth, async (req, res) => {
++router.get("/:projectId/tesbo-reports/runs", requireAuth, checkDatabaseHealth, async (req, res) => {
+   try {
+     const page = Math.max(1, parseInt(req.query.page) || 1);
+     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+@@ -605,7 +607,7 @@ router.get("/:projectId/tesbo-reports/runs", requireAuth, async (req, res) => {
+ 
+     const [runsResult, countResult] = await Promise.all([
+-      query(
++      queryWithRetry(
+         `SELECT id, execution_run_id, run_name, source_type, status,
+                 total_tests, passed, failed, skipped, duration_ms,
+                 started_at, completed_at, created_at,
+@@ -622,10 +624,11 @@ router.get("/:projectId/tesbo-reports/runs", requireAuth, async (req, res) => {
+          WHERE project_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2 OFFSET $3`,
+-        [req.params.projectId, limit, offset]
++        [req.params.projectId, limit, offset],
++        monitorQuery("tesbo-reports-runs-list")
+       ),
+-      query(
++      queryWithRetry(
+         "SELECT COUNT(*) AS total FROM report_runs WHERE project_id = $1",
+-        [req.params.projectId]
++        [req.params.projectId],
++        monitorQuery("tesbo-reports-runs-count")
+       ),
+     ]);
+@@ -638,6 +641,11 @@ router.get("/:projectId/tesbo-reports/runs", requireAuth, async (req, res) => {
+     });
+   } catch (err) {
+-    logger.error("List runs error:", err);
++    logger.error("List runs error:", {
++      error: err.message,
++      projectId: req.params.projectId,
++      stack: err.stack,
++      query: req.query
++    });
+     res.status(500).json({ error: "Failed to list runs" });
+   }
+ });
+@@ -1199,7 +1207,7 @@ router.get("/:projectId/reports/traces/:traceId", requireAuth, async (req, res)
+ });
+ 
+ // ── Spec intelligence (spec-level trends across runs) ────────────────────────
+-router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, async (req, res) => {
++router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, checkDatabaseHealth, async (req, res) => {
+   try {
+     const page = Math.max(1, parseInt(req.query.page) || 1);
+     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+@@ -1207,7 +1215,7 @@ router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, async (r
+ 
+     const [specsResult, countResult] = await Promise.all([
+-      query(
++      queryWithRetry(
+         `SELECT
+             COALESCE(NULLIF(rt.spec, ''), '(unknown spec)') AS spec,
+             COUNT(*) AS total_executions,
+@@ -1233,10 +1241,11 @@ router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, async (r
+          GROUP BY COALESCE(NULLIF(rt.spec, ''), '(unknown spec)')
+          ORDER BY failed DESC, total_executions DESC, spec ASC
+          LIMIT $2 OFFSET $3`,
+-        [req.params.projectId, limit, offset]
++        [req.params.projectId, limit, offset],
++        monitorQuery("spec-intelligence-list")
+       ),
+-      query(
++      queryWithRetry(
+         `SELECT COUNT(*)::integer AS total
+          FROM (
+            SELECT COALESCE(NULLIF(rt.spec, ''), '(unknown spec)')
+@@ -1245,7 +1254,8 @@ router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, async (r
+            WHERE rr.project_id = $1
+            GROUP BY COALESCE(NULLIF(rt.spec, ''), '(unknown spec)')
+          ) grouped_specs`,
+-        [req.params.projectId]
++        [req.params.projectId],
++        monitorQuery("spec-intelligence-count")
+       ),
+     ]);
+ 
+@@ -1269,6 +1279,11 @@ router.get("/:projectId/tesbo-reports/spec-intelligence", requireAuth, async (r
+     });
+   } catch (err) {
+-    logger.error("Spec intelligence error:", err);
++    logger.error("Spec intelligence error:", {
++      error: err.message,
++      projectId: req.params.projectId,
++      stack: err.stack,
++      query: req.query
++    });
+     res.status(500).json({ error: "Failed to load spec intelligence" });
+   }
+ });

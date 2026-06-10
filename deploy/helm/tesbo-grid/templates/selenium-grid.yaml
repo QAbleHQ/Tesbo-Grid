@@ -1,0 +1,75 @@
+{{- $fn := include "tesbo.fullname" . -}}
+# Selenium Grid: a single hub + chrome/firefox node deployments. Workers and the
+# selenium-proxy reach the hub at http://{{ $fn }}-selenium-hub:4444/wd/hub.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-selenium-hub
+  labels:
+    {{- include "tesbo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: selenium-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: selenium-hub, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: selenium-hub, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: hub
+          image: {{ .Values.selenium.image.hub }}
+          ports:
+            - { containerPort: 4444 }
+            - { containerPort: 4442 }
+            - { containerPort: 4443 }
+          readinessProbe: { httpGet: { path: /wd/hub/status, port: 4444 }, initialDelaySeconds: 15, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-selenium-hub
+  labels: {{- include "tesbo.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: selenium-hub, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports:
+    - { name: hub, port: 4444, targetPort: 4444 }
+    - { name: publish, port: 4442, targetPort: 4442 }
+    - { name: subscribe, port: 4443, targetPort: 4443 }
+{{- range $browser := (list "chrome" "firefox") }}
+{{- $cfg := index $.Values.selenium $browser }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-selenium-node-{{ $browser }}
+  labels:
+    {{- include "tesbo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: selenium-node-{{ $browser }}
+spec:
+  replicas: {{ $cfg.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: selenium-node-{{ $browser }}, app.kubernetes.io/instance: {{ $.Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: selenium-node-{{ $browser }}, app.kubernetes.io/instance: {{ $.Release.Name }} }
+    spec:
+      volumes:
+        - name: dshm
+          emptyDir: { medium: Memory, sizeLimit: 2Gi }
+      containers:
+        - name: node
+          image: {{ index $.Values.selenium.image $browser }}
+          volumeMounts:
+            - { name: dshm, mountPath: /dev/shm }
+          env:
+            - { name: SE_EVENT_BUS_HOST, value: "{{ $fn }}-selenium-hub" }
+            - { name: SE_EVENT_BUS_PUBLISH_PORT, value: "4442" }
+            - { name: SE_EVENT_BUS_SUBSCRIBE_PORT, value: "4443" }
+            - { name: SE_NODE_MAX_SESSIONS, value: "{{ $.Values.selenium.nodeMaxSessions }}" }
+            - { name: SE_NODE_OVERRIDE_MAX_SESSIONS, value: "true" }
+            - { name: SE_START_VNC, value: "true" }
+            - { name: SE_VNC_NO_PASSWORD, value: "1" }
+            - { name: SE_NO_VNC_PORT, value: "7900" }
+          resources: {{- toYaml $cfg.resources | nindent 12 }}
+{{- end }}

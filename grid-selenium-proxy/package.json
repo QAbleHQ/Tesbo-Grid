@@ -1,0 +1,19 @@
+{
+  "name": "tesbox-grid-selenium-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@tesbox/playwright-runner": "file:../grid-shared",
+    "express": "^4.21.2",
+    "http-proxy": "^1.18.1",
+    "pg": "^8.13.1",
+    "prom-client": "^15.1.3",
+    "ws": "^8.18.0"
+  }
+}

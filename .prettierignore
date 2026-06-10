@@ -1,0 +1,10 @@
+node_modules
+.next
+dist
+build
+coverage
+artifacts
+*.min.js
+package-lock.json
+grid-frontend/tsconfig.tsbuildinfo
+grid-frontend/next-env.d.ts
