@@ -6,13 +6,17 @@ Two supported substrates: **Docker Compose** (single VM, easiest) and
 
 ## Prerequisites
 
-- **Compose:** Docker Engine + Compose v2 on one host. ~4 vCPU / 8 GB is a
-  comfortable starting point (Selenium browsers are memory-hungry).
-- **Kubernetes:** a cluster (EKS/GKE/AKS/k3s/kind), `kubectl`, `helm`, and —
-  if you want queue-based autoscaling — [KEDA](https://keda.sh) installed.
-- Node.js ≥ 18 to run the setup CLI.
+See **[prerequisites.md](prerequisites.md)** for the full list of tooling,
+accounts, sizing, and network requirements. In short:
 
-Run `tesbo-grid doctor` (add `--target kubernetes` for the k8s checks) to verify.
+- **Compose:** Docker Engine + Compose v2 on one host (~4 vCPU / 8 GB is
+  comfortable — Selenium browsers are memory-hungry), plus Node.js ≥ 18.
+- **Kubernetes:** a cluster (EKS/GKE/AKS/k3s/kind), `kubectl`, `helm`, managed
+  Postgres + Redis, an ingress controller + TLS, and — for queue-based
+  autoscaling — [KEDA](https://keda.sh).
+
+Run `tesbo-grid doctor` (add `--target kubernetes` for the k8s checks) to verify
+your environment before deploying.
 
 ---
 

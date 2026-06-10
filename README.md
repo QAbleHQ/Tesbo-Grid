@@ -11,6 +11,10 @@ and a one-command setup.
 
 ## Quickstart (single VM, ~2 minutes)
 
+> **Prerequisites:** Docker + Docker Compose v2, Node.js ≥ 18, and a host with
+> ~4 GB RAM (Selenium browsers are memory-hungry). Full list:
+> [docs/prerequisites.md](docs/prerequisites.md).
+
 ```bash
 git clone https://github.com/QAbleHQ/Tesbo-Grid.git
 cd tesbo-grid
@@ -107,6 +111,7 @@ your hostnames, and pick an ingress preset (`generic-ingress`, `aws`, `gcp`,
 
 ## Documentation
 
+- [Prerequisites](docs/prerequisites.md) — what to have ready before you start
 - [Self-hosting guide](docs/self-hosting.md) — Compose + Kubernetes
 - [Configuration reference](docs/configuration.md) — every environment variable
 - [CLI reference](docs/cli.md) — operator + end-user CLIs
